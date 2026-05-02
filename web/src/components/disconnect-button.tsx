@@ -25,7 +25,8 @@ export function DisconnectButton({ username }: { username: string }) {
       type="button"
       onClick={disconnect}
       disabled={pending}
-      className="btn-ghost text-xs"
+      className="btn btn--ghost btn--block"
+      style={{ justifyContent: "flex-start", height: 28, fontSize: 12 }}
     >
       {pending ? (
         <Loader2 size={12} className="animate-spin" />

@@ -56,7 +56,7 @@ export async function GET(req: Request) {
       },
     });
 
-    const res = NextResponse.redirect(`${env.appUrl()}/projects`);
+    const res = NextResponse.redirect(`${env.appUrl()}/dashboard`);
     res.cookies.set("oxid_oauth_state", "", {
       httpOnly: true,
       sameSite: "lax",

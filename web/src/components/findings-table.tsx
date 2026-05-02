@@ -1,9 +1,9 @@
 "use client";
 
-import { ChevronRight, ExternalLink } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ChevronRight, ExternalLink, Search } from "lucide-react";
+import { useMemo, useState, type CSSProperties } from "react";
 
-import { SeverityBadge } from "@/components/severity-badge";
+import { SeverityBadge, severityColor } from "@/components/severity-badge";
 import {
   SEVERITY_ORDER,
   SEVERITY_RANK,
@@ -30,19 +30,27 @@ export interface FindingRow {
 
 export function FindingsTable({ findings }: { findings: FindingRow[] }) {
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [activeSeverities, setActiveSeverities] = useState<
-    Set<Severity> | "all"
-  >("all");
+  const [active, setActive] = useState<Set<Severity>>(
+    () => new Set(SEVERITY_ORDER),
+  );
   const [query, setQuery] = useState("");
+
+  const counts = useMemo(() => {
+    const c: Record<Severity, number> = {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      info: 0,
+    };
+    for (const f of findings) c[f.severity] += 1;
+    return c;
+  }, [findings]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return findings
-      .filter((f) =>
-        activeSeverities === "all"
-          ? true
-          : activeSeverities.has(f.severity),
-      )
+      .filter((f) => active.has(f.severity))
       .filter((f) => {
         if (!q) return true;
         return (
@@ -57,217 +65,172 @@ export function FindingsTable({ findings }: { findings: FindingRow[] }) {
           SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
           a.findingId.localeCompare(b.findingId),
       );
-  }, [findings, activeSeverities, query]);
+  }, [findings, active, query]);
 
-  const counts = useMemo(() => {
-    const c: Record<Severity, number> = {
-      critical: 0,
-      high: 0,
-      medium: 0,
-      low: 0,
-      info: 0,
-    };
-    for (const f of findings) c[f.severity] += 1;
-    return c;
-  }, [findings]);
-
-  function toggleSeverity(s: Severity) {
-    setActiveSeverities((prev) => {
-      const set =
-        prev === "all"
-          ? new Set<Severity>(SEVERITY_ORDER)
-          : new Set<Severity>(prev);
-      if (set.has(s)) set.delete(s);
-      else set.add(s);
-      if (set.size === 0 || set.size === SEVERITY_ORDER.length) return "all";
-      return set;
+  function toggle(s: Severity) {
+    setActive((prev) => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
+      if (next.size === 0) return new Set(SEVERITY_ORDER);
+      return next;
     });
   }
 
-  function isActive(s: Severity): boolean {
-    return activeSeverities === "all" ? true : activeSeverities.has(s);
-  }
-
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {SEVERITY_ORDER.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => toggleSeverity(s)}
-              className={cn(
-                "inline-flex items-center gap-2 rounded border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors focus-ring",
-                isActive(s)
-                  ? "border-borderStrong bg-surfaceAlt text-text"
-                  : "border-border bg-transparent text-muted hover:text-textDim",
-              )}
-              aria-pressed={isActive(s)}
-            >
-              <SeverityBadge severity={s} className="border-transparent bg-transparent !px-0 !py-0" />
-              <span className="text-textDim">{counts[s]}</span>
-            </button>
-          ))}
+    <div className="findings">
+      <div className="findings__filters">
+        <div className="pills">
+          {SEVERITY_ORDER.map((s) => {
+            const isOn = active.has(s);
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => toggle(s)}
+                className={cn("pill", isOn && "is-on")}
+                style={{ ["--sev" as never]: severityColor(s) } as CSSProperties}
+                aria-pressed={isOn}
+              >
+                <span className="pill__dot" />
+                <span>{s}</span>
+                <span
+                  className="pill__count"
+                  style={
+                    isOn
+                      ? undefined
+                      : { textDecoration: "line-through", opacity: 0.55 }
+                  }
+                >
+                  {counts[s]}
+                </span>
+              </button>
+            );
+          })}
         </div>
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filter by ID, title, package…"
-          className="input max-w-xs font-mono"
-          type="search"
-        />
+        <div className="findings__search">
+          <Search size={14} />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter by ID, title, package…"
+            type="search"
+          />
+        </div>
       </div>
 
       {filtered.length === 0 ? (
         <EmptyState hasFindings={findings.length > 0} />
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full table-fixed border-collapse text-sm">
-            <thead className="bg-surfaceAlt text-left text-[10px] uppercase tracking-wider text-muted">
-              <tr>
-                <th className="w-[34px] px-3 py-2"></th>
-                <th className="w-[88px] px-3 py-2">Severity</th>
-                <th className="w-[180px] px-3 py-2">ID</th>
-                <th className="px-3 py-2">Title</th>
-                <th className="w-[220px] px-3 py-2">Package</th>
-                <th className="w-[160px] px-3 py-2">Scanner</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((f) => {
-                const isOpen = expanded === f.id;
-                return (
-                  <FindingRowView
-                    key={f.id}
-                    finding={f}
-                    isOpen={isOpen}
-                    onToggle={() => setExpanded(isOpen ? null : f.id)}
-                  />
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="findings__table">
+          <div className="findings__head">
+            <span style={{ width: 28 }} />
+            <span style={{ width: 92 }}>Severity</span>
+            <span style={{ width: 200 }}>ID</span>
+            <span style={{ flex: 1, minWidth: 0 }}>Title</span>
+            <span style={{ width: 240 }}>Package</span>
+            <span style={{ width: 160 }}>Scanner</span>
+          </div>
+          {filtered.map((f) => {
+            const isOpen = expanded === f.id;
+            return (
+              <div key={f.id} className={cn("finding", isOpen && "finding--open")}>
+                <div
+                  className="finding__row"
+                  onClick={() => setExpanded(isOpen ? null : f.id)}
+                >
+                  <span style={{ width: 28 }}>
+                    <ChevronRight
+                      size={14}
+                      className={cn("chev", isOpen && "chev--open")}
+                    />
+                  </span>
+                  <span style={{ width: 92 }}>
+                    <SeverityBadge severity={f.severity} />
+                  </span>
+                  <span
+                    style={{ width: 200 }}
+                    className="mono dim trunc"
+                  >
+                    {f.findingId}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }} className="trunc">
+                    {f.title}
+                  </span>
+                  <span
+                    style={{ width: 240 }}
+                    className="mono dim trunc"
+                  >
+                    {f.packageName
+                      ? `${f.packageName}${f.packageVersion ? "@" + f.packageVersion : ""}`
+                      : "—"}
+                  </span>
+                  <span
+                    style={{ width: 160 }}
+                    className="mono dim trunc"
+                  >
+                    {f.sourceScanners.join(", ") || "—"}
+                  </span>
+                </div>
+                {isOpen ? <FindingDetail f={f} /> : null}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-function FindingRowView({
-  finding,
-  isOpen,
-  onToggle,
-}: {
-  finding: FindingRow;
-  isOpen: boolean;
-  onToggle: () => void;
-}) {
-  const pkg =
-    finding.packageName != null
-      ? `${finding.packageName}${finding.packageVersion ? `@${finding.packageVersion}` : ""}`
-      : "—";
-
+function FindingDetail({ f }: { f: FindingRow }) {
   return (
-    <>
-      <tr
-        className="cursor-pointer border-t border-border hover:bg-surfaceAlt/50"
-        onClick={onToggle}
-      >
-        <td className="px-3 py-2 align-top">
-          <ChevronRight
-            size={14}
-            className={cn(
-              "text-muted transition-transform",
-              isOpen && "rotate-90 text-textDim",
-            )}
-          />
-        </td>
-        <td className="px-3 py-2 align-top">
-          <SeverityBadge severity={finding.severity} />
-        </td>
-        <td className="px-3 py-2 align-top font-mono text-xs text-textDim">
-          {finding.findingId}
-        </td>
-        <td className="px-3 py-2 align-top text-text">
-          <span className="line-clamp-1">{finding.title}</span>
-        </td>
-        <td className="px-3 py-2 align-top font-mono text-xs text-textDim">
-          <span className="line-clamp-1">{pkg}</span>
-        </td>
-        <td className="px-3 py-2 align-top font-mono text-xs text-muted">
-          <span className="line-clamp-1">
-            {finding.sourceScanners.join(", ") || "—"}
-          </span>
-        </td>
-      </tr>
-      {isOpen ? (
-        <tr className="border-t border-border bg-surfaceAlt/30">
-          <td colSpan={6} className="px-6 py-4">
-            <FindingDetail finding={finding} />
-          </td>
-        </tr>
+    <div className="finding__detail">
+      {f.description ? (
+        <DetailRow label="Description">
+          <p>{f.description}</p>
+        </DetailRow>
       ) : null}
-    </>
-  );
-}
-
-function FindingDetail({ finding }: { finding: FindingRow }) {
-  return (
-    <div className="grid gap-4 text-sm leading-relaxed text-textDim">
-      {finding.description ? (
-        <Section label="Description">
-          <p className="whitespace-pre-wrap text-text">
-            {finding.description}
-          </p>
-        </Section>
+      {f.remediation ? (
+        <DetailRow label="Remediation">
+          <pre className="mono small">{f.remediation}</pre>
+        </DetailRow>
       ) : null}
-      {finding.remediation ? (
-        <Section label="Remediation">
-          <p className="whitespace-pre-wrap font-mono text-xs text-text">
-            {finding.remediation}
-          </p>
-        </Section>
-      ) : null}
-      {finding.filePath ? (
-        <Section label="Location">
-          <p className="font-mono text-xs text-text">
-            {finding.filePath}
-            {finding.line != null
-              ? `:${finding.line}${finding.column != null ? `:${finding.column}` : ""}`
+      {f.filePath ? (
+        <DetailRow label="Location">
+          <span className="mono small">
+            {f.filePath}
+            {f.line != null
+              ? `:${f.line}${f.column != null ? `:${f.column}` : ""}`
               : ""}
-          </p>
-        </Section>
+          </span>
+        </DetailRow>
       ) : null}
-      <Section label="Kind">
-        <span className="font-mono text-xs uppercase tracking-wider text-text">
-          {finding.kind}
-        </span>
-      </Section>
-      {finding.references.length > 0 ? (
-        <Section label="References">
-          <ul className="flex flex-col gap-1.5">
-            {finding.references.map((url) => (
+      <DetailRow label="Kind">
+        <span className="mono small upper">{f.kind}</span>
+      </DetailRow>
+      {f.references.length > 0 ? (
+        <DetailRow label="References">
+          <ul className="refs">
+            {f.references.map((url) => (
               <li key={url}>
                 <a
                   href={url}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="inline-flex items-center gap-1.5 font-mono text-xs text-oxide hover:underline"
+                  className="link mono small"
                 >
-                  <ExternalLink size={12} />
-                  {url}
+                  <ExternalLink size={11} /> {url}
                 </a>
               </li>
             ))}
           </ul>
-        </Section>
+        </DetailRow>
       ) : null}
     </div>
   );
 }
 
-function Section({
+function DetailRow({
   label,
   children,
 }: {
@@ -275,23 +238,34 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[120px_1fr] gap-4">
-      <div className="text-[10px] uppercase tracking-wider text-muted">
-        {label}
-      </div>
-      <div>{children}</div>
+    <div className="detail-row">
+      <div className="detail-row__label">{label}</div>
+      <div className="detail-row__body">{children}</div>
     </div>
   );
 }
 
 function EmptyState({ hasFindings }: { hasFindings: boolean }) {
   return (
-    <div className="card flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
-      <p className="font-mono text-sm text-textDim">
+    <div
+      className="card"
+      style={{
+        padding: "60px 24px",
+        textAlign: "center",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        alignItems: "center",
+      }}
+    >
+      <p
+        className="mono"
+        style={{ color: "var(--text-2)", margin: 0 }}
+      >
         {hasFindings ? "No findings match the current filters." : "No findings."}
       </p>
       {!hasFindings ? (
-        <p className="text-xs text-muted">
+        <p className="small" style={{ color: "var(--text-3)", margin: 0 }}>
           Either this project is clean, or scanners produced nothing yet.
         </p>
       ) : null}
