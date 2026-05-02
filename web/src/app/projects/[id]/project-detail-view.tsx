@@ -3,20 +3,35 @@
 import Link from "next/link";
 import {
   ArrowLeft,
+  Check,
   ExternalLink,
   Loader2,
   Play,
-  RefreshCw,
+  X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   type FindingRow,
   FindingsTable,
 } from "@/components/findings-table";
-import { ScanSummaryBar } from "@/components/scan-summary";
+import {
+  ScanSummaryBar,
+  SeverityTiles,
+} from "@/components/scan-summary";
 import type { SeveritySummary } from "@/lib/types";
-import { cn, formatAbsolute, formatDuration, formatRelative } from "@/lib/utils";
+import {
+  cn,
+  formatAbsolute,
+  formatDuration,
+  formatRelative,
+} from "@/lib/utils";
 
 interface ProjectMeta {
   id: string;
@@ -49,6 +64,14 @@ interface ScanDetailResponse {
 }
 
 const POLL_INTERVAL = 3000;
+
+const SCANNER_STAGES = [
+  { key: "sbom", label: "sbom" },
+  { key: "advisories", label: "advisories" },
+  { key: "lints", label: "lints" },
+  { key: "policy", label: "policy" },
+  { key: "unsafe-audit", label: "unsafe-audit" },
+];
 
 export function ProjectDetailView({
   projectId,
@@ -156,8 +179,19 @@ export function ProjectDetailView({
 
   if (loadError) {
     return (
-      <div className="rounded-md border border-red-900/60 bg-red-950/30 px-4 py-3 font-mono text-xs text-red-300">
-        {loadError}
+      <div className="screen">
+        <div
+          className="mono small"
+          style={{
+            color: "var(--err)",
+            border: "1px solid color-mix(in oklab, var(--err) 30%, transparent)",
+            background: "color-mix(in oklab, var(--err) 8%, var(--bg-1))",
+            padding: "12px 14px",
+            borderRadius: 6,
+          }}
+        >
+          {loadError}
+        </div>
       </div>
     );
   }
@@ -166,69 +200,88 @@ export function ProjectDetailView({
     return <ProjectDetailSkeleton />;
   }
 
+  const activeScan =
+    scanDetail?.scan ?? scans.find((s) => s.id === activeScanId) ?? null;
+
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <Link
-          href="/projects"
-          className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-textDim"
-        >
-          <ArrowLeft size={12} />
-          All projects
+    <div className="screen">
+      <div className="crumb">
+        <Link href="/projects" className="crumb__back">
+          <ArrowLeft size={12} /> All projects
         </Link>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="truncate font-mono text-xl font-semibold text-text">
-              {project.name}
-            </h1>
-            <div className="mt-1 flex items-center gap-2 text-xs text-muted">
-              <span className="font-mono">{project.nameWithNamespace}</span>
-              <span>·</span>
-              <span className="font-mono">{project.defaultBranch}</span>
-              <span>·</span>
-              <a
-                href={project.webUrl}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="inline-flex items-center gap-1 hover:text-textDim"
-              >
-                GitLab <ExternalLink size={11} />
-              </a>
-            </div>
-          </div>
+      </div>
+
+      <header className="screen__head">
+        <div style={{ minWidth: 0 }}>
+          <h1 className="screen__title">
+            {project.name}
+            <span className="screen__title-tag">{project.defaultBranch}</span>
+          </h1>
+          <p className="screen__subtitle">
+            <span className="mono">{project.nameWithNamespace}</span>
+            <span className="dot">·</span>
+            <a
+              href={project.webUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="link"
+            >
+              GitLab <ExternalLink size={11} />
+            </a>
+            {activeScan?.commitSha ? (
+              <>
+                <span className="dot">·</span>
+                <span className="mono">
+                  {activeScan.commitSha.slice(0, 8)}
+                </span>
+              </>
+            ) : null}
+          </p>
+        </div>
+        <div className="screen__head-actions">
           <button
             type="button"
             onClick={startScan}
             disabled={starting || isScanning}
-            className="btn-primary"
+            className="btn btn--primary"
           >
             {starting || isScanning ? (
               <>
-                <Loader2 size={14} className="animate-spin" />
+                <Loader2 size={14} className="spin" />
                 {isScanning ? "Scanning…" : "Starting…"}
               </>
             ) : (
               <>
-                <Play size={14} />
-                Scan now
+                <Play size={14} /> Scan now
               </>
             )}
           </button>
         </div>
-      </div>
+      </header>
 
       {scanError ? (
-        <div className="rounded-md border border-red-900/60 bg-red-950/30 px-4 py-3 font-mono text-xs text-red-300">
+        <div
+          className="mono small"
+          style={{
+            color: "var(--err)",
+            border: "1px solid color-mix(in oklab, var(--err) 30%, transparent)",
+            background: "color-mix(in oklab, var(--err) 8%, var(--bg-1))",
+            padding: "10px 12px",
+            borderRadius: 6,
+          }}
+        >
           {scanError}
         </div>
+      ) : null}
+
+      {activeScan?.summary ? (
+        <SeverityTiles summary={activeScan.summary} />
       ) : null}
 
       <ActiveScanPanel
         scanDetail={scanDetail}
         isScanning={isScanning}
-        scans={scans}
-        activeScanId={activeScanId}
-        onSelect={setActiveScanId}
+        activeScan={activeScan}
       />
 
       <ScanHistory
@@ -243,29 +296,38 @@ export function ProjectDetailView({
 function ActiveScanPanel({
   scanDetail,
   isScanning,
-  scans,
-  activeScanId,
-  onSelect,
+  activeScan,
 }: {
   scanDetail: ScanDetailResponse | null;
   isScanning: boolean;
-  scans: ScanMeta[];
-  activeScanId: string | null;
-  onSelect: (id: string) => void;
+  activeScan: ScanMeta | null;
 }) {
-  if (!activeScanId) {
+  if (!activeScan) {
     return (
-      <div className="card flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-        <p className="font-mono text-sm text-textDim">
-          No scans yet. Click <span className="text-text">Scan now</span> to run
-          one.
+      <div
+        className="card"
+        style={{
+          padding: "60px 24px",
+          textAlign: "center",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          alignItems: "center",
+        }}
+      >
+        <p className="mono" style={{ margin: 0, color: "var(--text-2)" }}>
+          No scans yet. Click <span style={{ color: "var(--text)" }}>Scan now</span>{" "}
+          to run one.
         </p>
-        <p className="text-xs text-muted">
-          The repo is cloned to a temp directory, scanned, and removed when
-          done.
+        <p className="small" style={{ margin: 0, color: "var(--text-3)" }}>
+          The repo is cloned to a temp directory, scanned, and removed when done.
         </p>
       </div>
     );
+  }
+
+  if (isScanning) {
+    return <LiveScanPanel scan={activeScan} />;
   }
 
   if (!scanDetail) {
@@ -273,96 +335,145 @@ function ActiveScanPanel({
   }
 
   const { scan, findings } = scanDetail;
-
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3 text-xs">
-          <ScanStatusBadge status={scan.status} />
-          <span className="font-mono text-textDim">
-            {formatAbsolute(scan.startedAt)}
-          </span>
-          {scan.commitSha ? (
-            <span className="font-mono text-muted">
-              {scan.commitSha.slice(0, 8)}
-            </span>
-          ) : null}
-        </div>
-        {scans.length > 1 ? (
-          <ScanSelect
-            scans={scans}
-            value={activeScanId}
-            onChange={onSelect}
-          />
-        ) : null}
-      </div>
-
+    <div className="scan-done">
       {scan.status === "failed" && scan.errorMessage ? (
-        <div className="rounded-md border border-red-900/60 bg-red-950/30 px-4 py-3 font-mono text-xs text-red-300">
-          <div className="mb-1 text-[10px] uppercase tracking-wider text-red-400">
+        <div
+          className="mono small"
+          style={{
+            color: "var(--err)",
+            border: "1px solid color-mix(in oklab, var(--err) 30%, transparent)",
+            background: "color-mix(in oklab, var(--err) 8%, var(--bg-1))",
+            padding: "12px 14px",
+            borderRadius: 8,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          <div className="upper" style={{ marginBottom: 4 }}>
             Scan failed
           </div>
-          <pre className="whitespace-pre-wrap break-words">
-            {scan.errorMessage}
-          </pre>
+          {scan.errorMessage}
         </div>
       ) : null}
 
       <ScanSummaryBar summary={scan.summary} duration={scan.duration} />
 
-      {isScanning ? (
-        <FindingsSkeleton scanning />
-      ) : (
-        <FindingsTable findings={findings} />
-      )}
+      <FindingsTable findings={findings} />
     </div>
   );
 }
 
-function ScanStatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    pending: "border-neutral-700 bg-neutral-800/50 text-neutral-300",
-    running: "border-oxide/40 bg-oxide/10 text-oxide",
-    completed: "border-emerald-800/60 bg-emerald-900/30 text-emerald-300",
-    failed: "border-red-800/70 bg-red-900/30 text-red-300",
-  };
+function LiveScanPanel({ scan }: { scan: ScanMeta }) {
+  const startedAt = new Date(scan.startedAt).getTime();
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, []);
+  const elapsedMs = Math.max(0, now - startedAt);
+  // Estimate completion at ~45s; clamp.
+  const estimatedTotal = 45_000;
+  const progress = Math.min(1, elapsedMs / estimatedTotal);
+  const stagesDone = Math.floor(progress * SCANNER_STAGES.length);
+
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider",
-        map[status] ?? "border-border bg-surface text-textDim",
-      )}
-    >
-      {status === "running" ? (
-        <Loader2 size={10} className="animate-spin" />
-      ) : null}
-      {status}
-    </span>
+    <section className="scan-live">
+      <div className="scan-live__head">
+        <div className="scan-live__title">
+          <span className="pulse" />
+          <span>Scan in progress</span>
+          <span className="mono dim">
+            · {(elapsedMs / 1000).toFixed(1)}s
+          </span>
+        </div>
+      </div>
+      <div className="scan-live__body">
+        <div className="scan-live__stages">
+          {SCANNER_STAGES.map((s, i) => {
+            const status: "queued" | "running" | "done" =
+              i < stagesDone ? "done" : i === stagesDone ? "running" : "queued";
+            const pct =
+              status === "done"
+                ? 1
+                : status === "queued"
+                  ? 0
+                  : Math.max(
+                      0,
+                      Math.min(1, progress * SCANNER_STAGES.length - i),
+                    );
+            return (
+              <div key={s.key} className={`stage stage--${status}`}>
+                <div className="stage__row">
+                  <span className="stage__name">{s.label}</span>
+                  <span className="stage__status">
+                    {status === "queued" ? (
+                      "queued"
+                    ) : status === "running" ? (
+                      <>
+                        <Loader2 size={11} className="spin" /> {Math.round(pct * 100)}%
+                      </>
+                    ) : (
+                      <>
+                        <Check size={11} /> done
+                      </>
+                    )}
+                  </span>
+                </div>
+                <div className="stage__bar">
+                  <span
+                    className="stage__bar-fill"
+                    style={{ width: `${(pct * 100).toFixed(1)}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="scan-live__term">
+          <div className="term-line term-line--info">
+            <span className="term-line__t">0000</span>
+            <span className="term-line__sym">·</span>
+            <span className="term-line__scanner">[oxid]</span>
+            <span className="term-line__text">
+              cloning {scan.branch}
+              {scan.commitSha ? ` @ ${scan.commitSha.slice(0, 8)}` : ""}…
+            </span>
+          </div>
+          <div className="term-line term-line--info">
+            <span className="term-line__t">{Math.round(elapsedMs).toString().padStart(4, "0")}</span>
+            <span className="term-line__sym">·</span>
+            <span className="term-line__scanner">[{SCANNER_STAGES[Math.min(stagesDone, SCANNER_STAGES.length - 1)].key}]</span>
+            <span className="term-line__text">
+              running… stage {Math.min(stagesDone + 1, SCANNER_STAGES.length)} of {SCANNER_STAGES.length}
+            </span>
+          </div>
+          <div className="term-cursor">█</div>
+        </div>
+      </div>
+    </section>
   );
 }
 
-function ScanSelect({
-  scans,
-  value,
-  onChange,
-}: {
-  scans: ScanMeta[];
-  value: string;
-  onChange: (id: string) => void;
-}) {
+function ScanStatusChip({ status }: { status: string }) {
+  const cls =
+    status === "completed"
+      ? "chip chip--ok"
+      : status === "failed"
+        ? "chip chip--err"
+        : status === "running" || status === "pending"
+          ? "chip chip--accent"
+          : "chip";
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="input max-w-xs font-mono text-xs"
-    >
-      {scans.map((s) => (
-        <option key={s.id} value={s.id}>
-          {formatRelative(s.completedAt ?? s.startedAt)} · {s.status}
-          {s.summary ? ` · ${s.summary.total}` : ""}
-        </option>
-      ))}
-    </select>
+    <span className={cls}>
+      {status === "completed" ? (
+        <Check size={11} />
+      ) : status === "failed" ? (
+        <X size={11} />
+      ) : status === "running" || status === "pending" ? (
+        <Loader2 size={11} className="spin" />
+      ) : null}
+      {status}
+    </span>
   );
 }
 
@@ -377,93 +488,76 @@ function ScanHistory({
 }) {
   if (scans.length === 0) return null;
   return (
-    <section className="flex flex-col gap-2">
-      <h2 className="font-mono text-xs uppercase tracking-wider text-muted">
-        Scan history
-      </h2>
-      <div className="card overflow-hidden">
-        <table className="w-full table-fixed text-sm">
-          <thead className="bg-surfaceAlt text-left text-[10px] uppercase tracking-wider text-muted">
-            <tr>
-              <th className="w-[110px] px-3 py-2">Status</th>
-              <th className="px-3 py-2">Started</th>
-              <th className="w-[100px] px-3 py-2">Duration</th>
-              <th className="w-[120px] px-3 py-2">Findings</th>
-              <th className="w-[120px] px-3 py-2">Commit</th>
-            </tr>
-          </thead>
-          <tbody>
-            {scans.map((s) => {
-              const isActive = s.id === activeScanId;
-              return (
-                <tr
-                  key={s.id}
-                  className={cn(
-                    "cursor-pointer border-t border-border hover:bg-surfaceAlt/50",
-                    isActive && "bg-surfaceAlt/40",
-                  )}
-                  onClick={() => onSelect(s.id)}
-                >
-                  <td className="px-3 py-2">
-                    <ScanStatusBadge status={s.status} />
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs text-textDim">
-                    {formatAbsolute(s.startedAt)}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs text-textDim">
-                    {formatDuration(s.duration)}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs text-textDim">
-                    {s.summary ? s.summary.total : "—"}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs text-muted">
-                    {s.commitSha ? s.commitSha.slice(0, 8) : "—"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+    <section className="history">
+      <h2 className="history__title">Scan history</h2>
+      <div className="history__table">
+        <div className="history__head">
+          <span style={{ width: 110 }}>Status</span>
+          <span style={{ flex: 1, minWidth: 0 }}>Started</span>
+          <span style={{ width: 110 }}>Duration</span>
+          <span style={{ width: 110 }}>Findings</span>
+          <span style={{ width: 110 }}>Commit</span>
+        </div>
+        {scans.map((s) => (
+          <div
+            key={s.id}
+            className={cn(
+              "history__row",
+              s.id === activeScanId && "is-active",
+            )}
+            onClick={() => onSelect(s.id)}
+          >
+            <span style={{ width: 110 }}>
+              <ScanStatusChip status={s.status} />
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }} className="mono small dim">
+              {formatAbsolute(s.startedAt)}
+            </span>
+            <span style={{ width: 110 }} className="mono small dim">
+              {formatDuration(s.duration)}
+            </span>
+            <span style={{ width: 110 }} className="mono small">
+              {s.summary ? s.summary.total : <span className="dim">—</span>}
+            </span>
+            <span style={{ width: 110 }} className="mono small dim">
+              {s.commitSha ? s.commitSha.slice(0, 8) : "—"}
+            </span>
+          </div>
+        ))}
       </div>
+      <p className="small" style={{ color: "var(--text-3)", margin: 0 }}>
+        Last scan {scans[0] ? formatRelative(scans[0].completedAt ?? scans[0].startedAt) : "—"}
+      </p>
     </section>
   );
 }
 
 function ProjectDetailSkeleton() {
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <div className="h-3 w-24 animate-pulse rounded bg-surface" />
-        <div className="h-7 w-64 animate-pulse rounded bg-surface" />
-        <div className="h-3 w-80 animate-pulse rounded bg-surface" />
-      </div>
+    <div className="screen">
+      <div
+        className="card"
+        style={{ height: 100, opacity: 0.5 }}
+        aria-hidden
+      />
       <FindingsSkeleton />
     </div>
   );
 }
 
-function FindingsSkeleton({ scanning }: { scanning?: boolean } = {}) {
+function FindingsSkeleton() {
   return (
-    <div className="card flex flex-col gap-3 p-6">
-      <div className="flex items-center gap-3">
-        {scanning ? (
-          <>
-            <Loader2 size={14} className="animate-spin text-oxide" />
-            <span className="font-mono text-xs text-textDim">
-              Cloning, running scanners…
-            </span>
-          </>
-        ) : (
-          <RefreshCw size={14} className="animate-spin text-muted" />
-        )}
-      </div>
-      <div className="flex flex-col gap-2">
-        {[0, 1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className="h-9 animate-pulse rounded bg-surfaceAlt/50"
-          />
-        ))}
+    <div className="card" style={{ padding: 18 }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          color: "var(--text-3)",
+        }}
+      >
+        <Loader2 size={14} className="spin" />
+        <span className="mono small">Loading findings…</span>
       </div>
     </div>
   );

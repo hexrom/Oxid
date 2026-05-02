@@ -27,7 +27,7 @@ export default function RootLayout({
       lang="en"
       className={`dark ${GeistSans.variable} ${jetbrainsMono.variable}`}
     >
-      <body className="min-h-screen antialiased">{children}</body>
+      <body>{children}</body>
     </html>
   );
 }

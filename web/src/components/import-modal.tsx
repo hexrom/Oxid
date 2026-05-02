@@ -106,95 +106,110 @@ export function ImportModal({ open, onClose, onImported }: ImportModalProps) {
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 px-4 py-12 backdrop-blur-sm animate-fadeIn"
-      onClick={onClose}
-    >
-      <div
-        className="card flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <header className="modal__head">
           <div>
-            <h2 className="font-mono text-sm font-semibold text-text">
-              Import Rust project
-            </h2>
-            <p className="mt-0.5 text-xs text-muted">
-              Browsing your GitLab repositories
-            </p>
+            <h2 className="modal__title">Import Rust project</h2>
+            <p className="modal__sub">Browsing your GitLab repositories</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="btn-ghost"
+            className="btn btn--ghost btn--icon"
             aria-label="Close"
           >
             <X size={14} />
           </button>
+        </header>
+
+        <div className="modal__search">
+          <Search size={14} />
+          <input
+            ref={inputRef}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search GitLab projects…"
+            type="search"
+          />
         </div>
 
-        <div className="border-b border-border px-5 py-3">
-          <div className="relative">
-            <Search
-              size={14}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-            />
-            <input
-              ref={inputRef}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search GitLab projects…"
-              className="input pl-9 font-mono"
-              type="search"
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-auto">
+        <div style={{ overflow: "auto" }}>
           {loading ? (
-            <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted">
-              <Loader2 size={14} className="animate-spin" />
-              Loading projects…
+            <div
+              className="mono small"
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "48px 0",
+                color: "var(--text-3)",
+              }}
+            >
+              <Loader2 size={14} className="spin" /> Loading projects…
             </div>
           ) : error ? (
-            <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
-              <p className="font-mono text-sm text-red-400">{error}</p>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 12,
+                padding: "48px 24px",
+                textAlign: "center",
+              }}
+            >
+              <p
+                className="mono small"
+                style={{ color: "var(--err)", margin: 0 }}
+              >
+                {error}
+              </p>
               <button
                 type="button"
                 onClick={() => setDebouncedSearch((s) => s + "")}
-                className="btn-secondary"
+                className="btn"
               >
                 <RefreshCw size={14} /> Retry
               </button>
             </div>
           ) : projects.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
-              <p className="font-mono text-sm text-textDim">
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 6,
+                padding: "48px 24px",
+                textAlign: "center",
+              }}
+            >
+              <p
+                className="mono"
+                style={{ color: "var(--text-2)", margin: 0 }}
+              >
                 No Rust projects found.
               </p>
-              <p className="text-xs text-muted">
-                Try a different search term, or check that you have GitLab
-                projects with Rust as the primary language.
+              <p className="small" style={{ color: "var(--text-3)", margin: 0 }}>
+                Try a different search, or check that you have GitLab projects
+                with Rust as the primary language.
               </p>
             </div>
           ) : (
-            <ul className="divide-y divide-border">
+            <ul className="modal__list">
               {projects.map((p) => (
                 <li
                   key={p.id}
-                  className={cn(
-                    "flex items-center justify-between gap-3 px-5 py-3",
-                    p.alreadyImported && "opacity-70",
-                  )}
+                  className={cn("modal__row")}
+                  style={p.alreadyImported ? { opacity: 0.7 } : undefined}
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-mono text-sm text-text">
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="mono modal__row-path trunc">
                       {p.name_with_namespace}
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-muted">
-                      <span className="font-mono">
-                        {p.default_branch ?? "main"}
-                      </span>
+                    <div className="modal__row-meta">
+                      <span className="mono">{p.default_branch ?? "main"}</span>
                       <span>·</span>
                       <span>updated {formatRelative(p.last_activity_at)}</span>
                       {p.visibility ? (
@@ -206,7 +221,7 @@ export function ImportModal({ open, onClose, onImported }: ImportModalProps) {
                     </div>
                   </div>
                   {p.alreadyImported ? (
-                    <span className="inline-flex items-center gap-1.5 rounded border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-textDim">
+                    <span className="chip chip--ok">
                       <Check size={12} /> Imported
                     </span>
                   ) : (
@@ -214,11 +229,11 @@ export function ImportModal({ open, onClose, onImported }: ImportModalProps) {
                       type="button"
                       onClick={() => importProject(p)}
                       disabled={importing === p.id}
-                      className="btn-secondary"
+                      className="btn"
                     >
                       {importing === p.id ? (
                         <>
-                          <Loader2 size={14} className="animate-spin" /> Importing
+                          <Loader2 size={14} className="spin" /> Importing
                         </>
                       ) : (
                         "Import"
