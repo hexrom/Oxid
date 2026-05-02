@@ -1,0 +1,48 @@
+You are building **Oxid Web** — a minimalist web dashboard for the Oxid Rust security scanner. It connects to a user's GitLab account, discovers their Rust projects, lets them import and scan projects, and displays findings in a clean, digestible UI.
+
+## Core Principles
+
+1. The CLI is the engine. Never reimplement scan logic in TypeScript. The web app clones a repo, runs `oxid scan --format json`, parses the output, and stores/displays results. That's it.
+2. Minimalist MVP. Three views: connect → import → scan/results. No settings pages, dashboards-of-dashboards, or admin panels.
+3. Single-user, self-hosted first. One user, one GitLab connection. No multi-tenancy, no team features, no billing.
+4. Clone on demand, don't persist repos. Importing saves metadata only. Scanning means: clone to a temp directory → run `oxid scan` → store results → delete the clone.
+5. Design with intent. Dark, industrial, utilitarian — like a terminal given just enough polish to be pleasant. Vercel dashboard meets a code editor. Precise, never playful or corporate.
+
+## Tech Stack
+
+- Next.js 14+ App Router, TypeScript strict
+- SQLite via Prisma (one file, swap to Postgres later)
+- GitLab OAuth 2.0 (no separate auth system)
+- Tailwind CSS, copy-paste components only — no shadcn/ui dependency, no component library bloat
+- Child process for both `git clone --depth 1` and `oxid scan --format json`
+
+## What NOT to Do
+
+- Do NOT reimplement scan logic in TypeScript.
+- Do NOT persist cloned repositories. Clone → scan → delete. Always, in a `finally`.
+- Do NOT include the OAuth token in any API response, log, or UI string. Strip it from error messages.
+- Do NOT build user management, teams, or billing.
+- Do NOT add GitHub support yet.
+- Do NOT use a separate backend server. Next.js API routes are the backend.
+- Do NOT use WebSockets for scan progress. Polling every 3s is fine.
+- Do NOT over-animate.
+- Do NOT use Inter, Roboto, or system fonts. Use Geist + JetBrains Mono.
+
+## CLI contract (do not break)
+
+The Rust CLI is invoked as `oxid scan --format json`. It scans the **current working directory** — there is no `--path` flag. Spawn it with `cwd: tempDir`. Stdout is `Finding[]` JSON; stderr is timing info. Severity values are lowercase (`critical | high | medium | low | info`); kind is kebab-case (`sca | sast | license | unsafe`).
+
+## Design tokens
+
+- Background `#0a0a0a`, surface `#141414`, surfaceAlt `#181818`, border `#1f1f1f`
+- Single accent: oxide orange `#e85d26` — primary actions, critical badge, logo mark only
+- Mono for data (IDs, versions, package names). Geist for chrome/headings.
+- Density medium-high. Borders 1px. Icons Lucide, 16px, sparingly.
+
+## Conventions
+
+- kebab-case file names, one component per file.
+- Functional components only. Server components for initial loads; client components for polling/mutations.
+- Zod for API request/response validation.
+- Every API route wraps in try/catch and returns `{ error: string }` with appropriate status. Never leak stack traces.
+- The OAuth token lives only in the database and in memory during clone operations. The token-embedded clone URL must never appear in any response or log.

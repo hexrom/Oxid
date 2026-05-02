@@ -2,84 +2,79 @@
 
 [![CI](https://github.com/hexrom/oxid/actions/workflows/ci.yml/badge.svg)](https://github.com/hexrom/oxid/actions/workflows/ci.yml)
 
-`oxid` is a Rust-native security scanner aggregator. It runs multiple Rust ecosystem scanners and emits a single report in human, JSON, or SARIF formats.
+Oxid is a Rust-native security scanner aggregator with two halves living side by side in this repo:
 
-## Installation
+| Folder | What it is | Stack |
+|---|---|---|
+| [`cli/`](./cli) | The scan engine. Aggregates `cargo-audit`, `clippy`, `cargo-sbom`, `cargo-deny`, `cargo-geiger` and emits a unified report (human / JSON / SARIF). | Rust |
+| [`web/`](./web) | A minimalist dashboard that connects to GitLab, imports Rust projects, runs `oxid scan` on demand, and visualizes findings. | Next.js 14, Prisma, SQLite |
 
-### Build locally
-
-```bash
-cargo build --release
-```
-
-### Install from source
-
-```bash
-cargo install --path .
-```
+The CLI is the engine. The web app shells out to it — never reimplements scan logic. See [`cli/README.md`](./cli/README.md) and [`web/README.md`](./web/README.md) for the per-half details.
 
 ## Quick start
 
-Run all scanners in the current project:
+### CLI
 
 ```bash
-oxid scan
+cd cli
+cargo build --release
+./target/release/oxid scan
 ```
 
-Run only specific scanners:
+Or install onto `PATH`:
 
 ```bash
-oxid scan --only cargo-audit,cargo-sbom
-oxid scan --exclude clippy
-```
-
-Machine-readable output:
-
-```bash
+cd cli
+cargo install --path .
 oxid scan --format json
-oxid scan --format sarif
 ```
 
-CI-style fail threshold:
+### Web
+
+The web app needs the CLI binary reachable. Either install with `cargo install --path cli` so `oxid` is on `PATH`, or set `OXID_BIN` to its absolute path in `web/.env.local`.
 
 ```bash
-oxid scan --fail-on high
+cd web
+npm install
+cp .env.example .env.local
+# Set GITLAB_APP_ID, GITLAB_APP_SECRET, OXID_BIN
+npx prisma db push
+npm run dev
 ```
 
-Generate default config:
+Open <http://localhost:3000>, click **Connect GitLab**, import a Rust repo, scan it.
 
-```bash
-oxid --init
+## Repository layout
+
+```
+oxid/
+├── cli/                    # Rust CLI (the scan engine)
+│   ├── src/
+│   ├── tests/
+│   ├── Cargo.toml
+│   └── README.md
+├── web/                    # Next.js web dashboard
+│   ├── src/
+│   ├── prisma/
+│   ├── package.json
+│   └── README.md
+├── README.md               # this file
+├── AGENTS.md               # project-wide rules for AI assistants
+└── .gitignore
 ```
 
-## Scanner support
+## How the two halves talk to each other
 
-| Scanner | Kind | Status | Notes |
-|---|---|---|---|
-| `cargo-audit` | SCA | Implemented | Uses RustSec advisory database |
-| `clippy` | SAST | Implemented | Parses JSON diagnostics |
-| `cargo-sbom` | SCA | Implemented | Parses SPDX JSON and queries OSV |
-| `cargo-deny` | SCA/License | Implemented | Parses advisory and license findings |
-| `cargo-geiger` | Unsafe | Implemented | Reports unsafe usage per crate |
+The web app does **not** import the CLI as a library. It treats `oxid` as a black-box subprocess:
 
-## Config file (`.oxid.toml`)
+1. User clicks **Scan now** in the web UI.
+2. The orchestrator at `web/src/lib/scanner.ts` clones the GitLab repo into a temp directory.
+3. It spawns `oxid scan --format json` with `cwd: <tempDir>` (the CLI scans the current working directory; there is no `--path` flag).
+4. Stdout is parsed as `Finding[]` — the same struct defined in `cli/src/finding.rs`. The TypeScript mirror lives at `web/src/lib/types.ts`.
+5. Findings + a severity summary are written to SQLite. The temp dir is **always** removed in a `finally` block (it contains an OAuth-tokened `.git/config`).
 
-```toml
-[scanners]
-only = []
-exclude = []
+The single contract between the two halves is the JSON shape of `Finding`. If you change the Rust struct in `cli/src/finding.rs`, mirror the change in `web/src/lib/types.ts`.
 
-[thresholds]
-fail_on = "high"
+## License
 
-[ignore]
-finding_ids = ["RUSTSEC-2020-0159"]
-```
-
-CLI flags override config defaults.
-
-## Example output
-
-Place a screenshot at `docs/images/scan-output.png` and reference it here:
-
-`![Oxid scan output](docs/images/scan-output.png)`
+See [`cli/`](./cli) for license details.

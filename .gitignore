@@ -1,3 +1,52 @@
-/target
+# ─── Secrets & local config ────────────────────────────────
+# Match anywhere in the tree, not just root or web/.
+.env
+.env.*
+!.env.example
+*.env
+*.env.local
+
+# Local secret files that sometimes get created ad-hoc
+secrets.*
+*.secret
+*.secrets
+credentials.json
+*.pem
+*.key
+!**/public.key
+
+# ─── Databases (may contain OAuth tokens) ──────────────────
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+web/prisma/dev.db
+web/prisma/dev.db-journal
+web/prisma/migrations/dev/
+
+# ─── Rust (CLI) ────────────────────────────────────────────
+cli/target/
 *.lock
+!cli/Cargo.lock
 .oxid.toml
+
+# ─── Node / Next.js (web) ──────────────────────────────────
+node_modules/
+.next/
+out/
+build/
+dist/
+next-env.d.ts
+*.tsbuildinfo
+
+# ─── Logs ──────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── OS / editor ───────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
